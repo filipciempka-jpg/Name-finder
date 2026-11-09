@@ -29,7 +29,11 @@ function loadDB() {
       }
     };
   } catch {
-    return structuredClone(defaults);
+    return {
+      records: [],
+      favorites: [],
+      settings: { ...defaults.settings }
+    };
   }
 }
 
@@ -61,6 +65,8 @@ function getCharset() {
   return $('input[name="charset"]:checked')?.value || "letters";
 }
 
+/* DOKŁADNE ZESTAWY ZNAKÓW */
+
 function charsetPool(charset) {
   const letters = "abcdefghijklmnopqrstuvwxyz";
   const digits = "0123456789";
@@ -69,12 +75,31 @@ function charsetPool(charset) {
   const pools = {
     letters: letters,
     mixed: letters + digits,
-    full: letters + digits + underscore,
     letters_symbols: letters + underscore,
+    full: letters + digits + underscore,
     digits_symbols: digits + underscore
   };
 
   return pools[charset] || letters;
+}
+
+/* GENERATOR LOSOWEJ NAZWY */
+
+function makeName(len, charset) {
+  const pool = charsetPool(charset);
+
+  if (!pool.length) {
+    throw new Error("Nieprawidłowy zestaw znaków");
+  }
+
+  let output = "";
+
+  for (let i = 0; i < len; i++) {
+    const index = Math.floor(Math.random() * pool.length);
+    output += pool[index];
+  }
+
+  return output;
 }
 
 function renderCharsetOptions() {
@@ -82,9 +107,7 @@ function renderCharsetOptions() {
     ? ["letters", "mixed", "letters_symbols", "full", "digits_symbols"]
     : ["letters", "mixed", "full"];
 
-  const options = $$("#charsetOptions .choice");
-
-  options.forEach((option) => {
+  $$("#charsetOptions .choice").forEach((option) => {
     const radio = option.querySelector('input[name="charset"]');
     option.hidden = !allowed.includes(radio.value);
   });
@@ -93,7 +116,6 @@ function renderCharsetOptions() {
 
   if (!selected || !allowed.includes(selected.value)) {
     const fallback = $('input[name="charset"][value="letters"]');
-
     if (fallback) fallback.checked = true;
   }
 }
@@ -108,17 +130,7 @@ function minLen(p) {
   return p === "minecraft" ? 3 : 2;
 }
 
-function makeName(len, charset) {
-  const pool = charsetPool(charset);
-
-  let output = "";
-
-  for (let i = 0; i < len; i++) {
-    output += pool[Math.floor(Math.random() * pool.length)];
-  }
-
-  return output;
-}
+/* KOLEJKA: HISTORIA + NOWE UNIKALNE NAZWY */
 
 function makeQueue(p, len, amount, charset) {
   const historyItems = db.records
@@ -141,8 +153,6 @@ function makeQueue(p, len, amount, charset) {
     }
   }
 
-  // Nie generujemy ponownie żadnej nazwy zapisanej
-  // wcześniej na wybranej platformie.
   const used = new Set(
     db.records
       .filter((r) => r.platform === p)
@@ -151,7 +161,6 @@ function makeQueue(p, len, amount, charset) {
 
   const poolSize = charsetPool(charset).length;
   const maxSpace = poolSize ** len;
-
   const available = Math.max(0, maxSpace - used.size);
   const target = Math.min(amount, available);
 
@@ -179,6 +188,8 @@ function makeQueue(p, len, amount, charset) {
     newItems
   };
 }
+
+/* SPRAWDZANIE NAZW */
 
 async function checkName(name, p) {
   if (p === "minecraft") {
@@ -210,9 +221,7 @@ async function checkName(name, p) {
           return "taken";
         }
 
-        // Brak profilu nie jest potwierdzeniem wolnego nicku.
         return "unknown";
-
       } finally {
         clearTimeout(timer);
       }
@@ -228,9 +237,7 @@ async function checkName(name, p) {
   try {
     const url = new URL(endpoint);
 
-    if (url.protocol !== "https:") {
-      return "unknown";
-    }
+    if (url.protocol !== "https:") return "unknown";
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 9000);
@@ -256,7 +263,6 @@ async function checkName(name, p) {
       if (data.available === false) return "taken";
 
       return "unknown";
-
     } finally {
       clearTimeout(timer);
     }
@@ -264,6 +270,8 @@ async function checkName(name, p) {
     return "unknown";
   }
 }
+
+/* ZAPIS WYNIKU */
 
 function recordResult(name, p, len, status) {
   const checkedAt = new Date().toISOString();
@@ -286,7 +294,6 @@ function recordResult(name, p, len, status) {
     });
   }
 
-  // Aktualizacja istniejących obiektów ulubionych.
   db.favorites.forEach((favorite) => {
     if (
       typeof favorite !== "string" &&
@@ -562,10 +569,7 @@ function renderHistory() {
 }
 
 function fillLengthFilters() {
-  for (const id of [
-    "favoriteLength",
-    "historyLength"
-  ]) {
+  for (const id of ["favoriteLength", "historyLength"]) {
     const select = $("#" + id);
     if (!select) continue;
 
@@ -576,10 +580,8 @@ function fillLengthFilters() {
 
     for (let i = 2; i <= 16; i++) {
       const option = document.createElement("option");
-
       option.value = String(i);
       option.textContent = `${i} znaków`;
-
       select.appendChild(option);
     }
 
@@ -600,7 +602,6 @@ function renderLengths() {
   if (!grid) return;
 
   const minimum = minLen(platform);
-
   length = Math.max(minimum, Math.min(16, length));
 
   $("#lengthHint").textContent = `${minimum}–16 znaków`;
@@ -626,9 +627,7 @@ function renderLengths() {
 }
 
 function setPlatform(nextPlatform) {
-  if (!["discord", "minecraft"].includes(nextPlatform)) {
-    return;
-  }
+  if (!["discord", "minecraft"].includes(nextPlatform)) return;
 
   platform = nextPlatform;
 
@@ -702,7 +701,6 @@ function finishScan(message) {
 
   $("#scanState").textContent = "ZAKOŃCZONO";
   $("#scanState").className = "status-pill done";
-
   $("#currentName").textContent =
     message || "Skanowanie zakończone.";
 
@@ -710,6 +708,8 @@ function finishScan(message) {
 
   renderAll();
 }
+
+/* SKANOWANIE RÓWNOLEGŁE */
 
 async function runScanLoop(activeJob) {
   if (
@@ -734,10 +734,9 @@ async function runScanLoop(activeJob) {
           ? MINECRAFT_CONCURRENCY
           : 1;
 
-      const start = activeJob.index;
       const batch = activeJob.items.slice(
-        start,
-        start + concurrency
+        activeJob.index,
+        activeJob.index + concurrency
       );
 
       $("#currentName").textContent =
@@ -745,7 +744,6 @@ async function runScanLoop(activeJob) {
           ? `Sprawdzanie ${batch.length} nazw równolegle…`
           : batch[0].name;
 
-      // Wszystkie zapytania w partii startują równolegle.
       const results = await Promise.all(
         batch.map(async (item) => ({
           item,
@@ -756,7 +754,6 @@ async function runScanLoop(activeJob) {
         }))
       );
 
-      // Nie zapisujemy wyników starego skanu po zatrzymaniu.
       if (!activeJob.running) break;
 
       for (const result of results) {
@@ -782,10 +779,8 @@ async function runScanLoop(activeJob) {
       updateProgress();
       renderAll();
 
-      // Pauza zaczyna obowiązywać po zakończeniu bieżącej partii.
       if (activeJob.paused) break;
 
-      // Discord zachowuje dotychczasowe wolniejsze sprawdzanie.
       if (
         activeJob.platform === "discord" &&
         activeJob.running &&
@@ -812,7 +807,6 @@ async function runScanLoop(activeJob) {
   } finally {
     activeJob.loopActive = false;
 
-    // Zabezpieczenie przed utratą wznowienia.
     if (
       activeJob.running &&
       !activeJob.paused &&
@@ -878,12 +872,11 @@ function startScan() {
 
   $("#scanState").textContent = "W TRAKCIE";
   $("#scanState").className = "status-pill running";
-
   $("#pauseBtn").textContent = "Ⅱ Pauza";
 
   if (queue.newItems.length < amount) {
     toast(
-      `Wygenerowano ${queue.newItems.length} nowych nazw. Reszta była już wykorzystana.`
+      `Wygenerowano ${queue.newItems.length} nowych nazw.`
     );
   }
 
@@ -906,7 +899,6 @@ function pauseScan() {
     $("#pauseBtn").textContent = "Ⅱ Pauza";
     $("#scanState").textContent = "W TRAKCIE";
     $("#scanState").className = "status-pill running";
-
     runScanLoop(job);
   }
 }
@@ -917,6 +909,8 @@ function stopScan() {
   finishScan("Skanowanie zatrzymane przez użytkownika.");
   toast("Skanowanie zatrzymane");
 }
+
+/* EKSPORT */
 
 function downloadFile(filename, content, type) {
   const blob = new Blob([content], { type });
@@ -959,6 +953,8 @@ function exportCSV(records, filename) {
     "text/csv;charset=utf-8"
   );
 }
+
+/* OBSŁUGA INTERFEJSU */
 
 function bindEvents() {
   $("#platforms").addEventListener("click", (event) => {
@@ -1036,19 +1032,15 @@ function bindEvents() {
 
   $("#exportFavorites").addEventListener("click", () => {
     const favorites = db.favorites.map(resolveFavorite);
-
     exportCSV(favorites, "name-finder-ulubione.csv");
   });
 
   $("#clearHistory").addEventListener("click", () => {
-    if (!confirm("Czy na pewno wyczyścić całą historię?")) {
-      return;
-    }
+    if (!confirm("Czy na pewno wyczyścić całą historię?")) return;
 
     db.records = [];
     saveDB();
     renderAll();
-
     toast("Historia wyczyszczona");
   });
 
@@ -1067,7 +1059,12 @@ function bindEvents() {
 
     if (job?.running) stopScan();
 
-    db = structuredClone(defaults);
+    db = {
+      records: [],
+      favorites: [],
+      settings: { ...defaults.settings }
+    };
+
     saveDB();
     renderAll();
 
