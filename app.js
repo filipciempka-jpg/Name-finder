@@ -68,19 +68,31 @@ function getCharset() {
 /* DOKŁADNE ZESTAWY ZNAKÓW */
 
 function charsetPool(charset) {
-  const letters = "abcdefghijklmnopqrstuvwxyz";
-  const digits = "0123456789";
-  const underscore = "_";
-
   const pools = {
-    letters: letters,
-    mixed: letters + digits,
-    letters_symbols: letters + underscore,
-    full: letters + digits + underscore,
-    digits_symbols: digits + underscore
+    letters: "abcdefghijklmnopqrstuvwxyz",
+    mixed: "abcdefghijklmnopqrstuvwxyz0123456789",
+    letters_symbols: "abcdefghijklmnopqrstuvwxyz_",
+    full: "abcdefghijklmnopqrstuvwxyz0123456789_",
+    digits_symbols: "0123456789_"
   };
 
-  return pools[charset] || letters;
+  return pools[charset] || pools.letters;
+}
+
+/* WALIDACJA ZESTAWU ZNAKÓW */
+
+function isValidCharset(name, charset) {
+  const pool = charsetPool(charset);
+
+  if (!name || !pool) return false;
+
+  for (const char of name) {
+    if (!pool.includes(char)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 /* GENERATOR LOSOWEJ NAZWY */
@@ -88,7 +100,7 @@ function charsetPool(charset) {
 function makeName(len, charset) {
   const pool = charsetPool(charset);
 
-  if (!pool.length) {
+  if (!pool) {
     throw new Error("Nieprawidłowy zestaw znaków");
   }
 
@@ -97,6 +109,10 @@ function makeName(len, charset) {
   for (let i = 0; i < len; i++) {
     const index = Math.floor(Math.random() * pool.length);
     output += pool[index];
+  }
+
+  if (!isValidCharset(output, charset)) {
+    throw new Error("Generator utworzył niedozwolone znaki");
   }
 
   return output;
@@ -137,7 +153,8 @@ function makeQueue(p, len, amount, charset) {
     .filter((r) =>
       r.platform === p &&
       r.length === len &&
-      r.status === "taken"
+      r.status === "taken" &&
+      isValidCharset(r.name, charset)
     )
     .sort((a, b) =>
       String(a.checkedAt).localeCompare(String(b.checkedAt))
@@ -167,7 +184,7 @@ function makeQueue(p, len, amount, charset) {
   const newItems = [];
 
   let attempts = 0;
-  const maxAttempts = target * 50 + 1000;
+  const maxAttempts = target * 100 + 2000;
 
   while (
     newItems.length < target &&
@@ -176,6 +193,9 @@ function makeQueue(p, len, amount, charset) {
     attempts++;
 
     const name = makeName(len, charset);
+
+    if (!isValidCharset(name, charset)) continue;
+    if (name.length !== len) continue;
 
     if (!used.has(name)) {
       used.add(name);
