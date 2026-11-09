@@ -14,14 +14,22 @@
 </head>
 <body>
   <div class="app-shell">
+
     <header class="topbar">
       <div class="brand-mark">NF</div>
-      <div class="brand-copy"><h1>NAME <span>FINDER</span></h1><small>USERNAME SCANNER</small></div>
+
+      <div class="brand-copy">
+        <h1>NAME <span>FINDER</span></h1>
+        <small>USERNAME SCANNER</small>
+      </div>
+
       <button id="settingsBtn" class="icon-btn" aria-label="Ustawienia">⚙</button>
     </header>
 
     <main>
+
       <section id="scanView" class="view active">
+
         <div class="hero">
           <div class="eyebrow">WORKSPACE / SCANNER</div>
           <h2>Znajdź swój<br><span>unikalny nick.</span></h2>
@@ -29,110 +37,393 @@
         </div>
 
         <div class="panel">
-          <div class="section-head"><h3>Platforma</h3><span class="muted">01 / 04</span></div>
-          <div class="segmented" id="platforms">
-            <button class="segment selected" data-platform="discord"><span class="platform-icon">◉</span> Discord</button>
-            <button class="segment" data-platform="minecraft"><span class="platform-icon">▦</span> Minecraft</button>
+
+          <div class="section-head">
+            <h3>Platforma</h3>
+            <span class="muted">01 / 04</span>
           </div>
 
-          <div class="section-head"><h3>Długość nazwy</h3><span id="lengthHint" class="muted">2–16 znaków</span></div>
+          <div class="segmented" id="platforms">
+            <button class="segment selected" data-platform="discord">
+              <span class="platform-icon">◉</span> Discord
+            </button>
+
+            <button class="segment" data-platform="minecraft">
+              <span class="platform-icon">▦</span> Minecraft
+            </button>
+          </div>
+
+          <div class="section-head">
+            <h3>Długość nazwy</h3>
+            <span id="lengthHint" class="muted">2–16 znaków</span>
+          </div>
+
           <div id="lengthGrid" class="length-grid"></div>
 
-          <div class="section-head"><h3>Rodzaj znaków</h3></div>
-          <div class="choice-row">
-            <label class="choice"><input type="radio" name="charset" value="letters" checked><span>Same litery</span></label>
-            <label class="choice"><input type="radio" name="charset" value="mixed"><span>Litery + cyfry</span></label>
-            <label class="choice"><input type="radio" name="charset" value="full"><span>Litery + cyfry + podkreślnik (_)</span></label>
+          <div class="section-head">
+            <h3>Rodzaj znaków</h3>
           </div>
 
-          <div class="section-head"><h3>Liczba sprawdzeń</h3><strong id="amountLabel">1000</strong></div>
-          <input id="amount" type="range" min="10" max="5000" step="10" value="1000">
-          <div class="range-labels"><span>10</span><span>5000</span></div>
+          <div class="choice-row" id="charsetOptions">
 
-          <div class="scan-note"><span class="info-dot">i</span><span>Limit obejmuje najpierw ponowne sprawdzenie historii dla wybranej platformy i długości, a następnie nowe nazwy.</span></div>
-          <button id="startBtn" class="primary-btn"><span>⌕</span> ROZPOCZNIJ SKAN</button>
+            <label class="choice">
+              <input type="radio" name="charset" value="letters" checked>
+              <span>Same litery</span>
+            </label>
+
+            <label class="choice">
+              <input type="radio" name="charset" value="mixed">
+              <span>Litery + cyfry</span>
+            </label>
+
+            <label class="choice">
+              <input type="radio" name="charset" value="letters_symbols">
+              <span>Litery + podkreślnik (_)</span>
+            </label>
+
+            <label class="choice">
+              <input type="radio" name="charset" value="full">
+              <span>Litery + cyfry + podkreślnik (_)</span>
+            </label>
+
+            <label class="choice">
+              <input type="radio" name="charset" value="digits_symbols">
+              <span>Cyfry + podkreślnik (_)</span>
+            </label>
+
+          </div>
+
+          <div class="section-head">
+            <h3>Liczba nowych nicków</h3>
+            <strong id="amountLabel">1000</strong>
+          </div>
+
+          <input id="amount" type="range" min="10" max="5000" step="10" value="1000">
+
+          <div class="range-labels">
+            <span>10</span>
+            <span>5000</span>
+          </div>
+
+          <div class="scan-note">
+            <span class="info-dot">i</span>
+            <span>
+              Liczba z suwaka dotyczy nowych nicków.
+              Wcześniejsze zajęte nazwy z wybranej platformy i długości
+              zostaną ponownie sprawdzone dodatkowo przed nowymi.
+            </span>
+          </div>
+
+          <button id="startBtn" class="primary-btn">
+            <span>⌕</span> ROZPOCZNIJ SKAN
+          </button>
+
         </div>
 
         <div id="scanPanel" class="panel scan-panel hidden">
-          <div class="section-head"><h3 id="scanTitle">Skanowanie</h3><span id="scanState" class="status-pill running">W TRAKCIE</span></div>
-          <div class="progress-top"><strong id="progressText">0 / 1000</strong><span id="progressPercent">0%</span></div>
-          <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
+
+          <div class="section-head">
+            <h3 id="scanTitle">Skanowanie</h3>
+            <span id="scanState" class="status-pill running">W TRAKCIE</span>
+          </div>
+
+          <div class="progress-top">
+            <strong id="progressText">0 / 1000</strong>
+            <span id="progressPercent">0%</span>
+          </div>
+
+          <div class="progress-track">
+            <div id="progressBar" class="progress-bar"></div>
+          </div>
+
           <div class="stats-grid">
-            <div class="stat-card"><strong id="freeCount" class="green">0</strong><span>Wolne</span></div>
-            <div class="stat-card"><strong id="takenCount" class="red">0</strong><span>Zajęte</span></div>
-            <div class="stat-card"><strong id="unknownCount" class="amber">0</strong><span>Niewiadomo</span></div>
-            <div class="stat-card"><strong id="checkedCount">0</strong><span>Sprawdzone</span></div>
+
+            <div class="stat-card">
+              <strong id="freeCount" class="green">0</strong>
+              <span>Wolne</span>
+            </div>
+
+            <div class="stat-card">
+              <strong id="takenCount" class="red">0</strong>
+              <span>Zajęte</span>
+            </div>
+
+            <div class="stat-card">
+              <strong id="unknownCount" class="amber">0</strong>
+              <span>Możliwe</span>
+            </div>
+
+            <div class="stat-card">
+              <strong id="checkedCount">0</strong>
+              <span>Sprawdzone</span>
+            </div>
+
           </div>
+
           <div class="scan-substats">
-            <div><span>Historia</span><strong id="historyProgress">0 / 0</strong></div>
-            <div><span>Nowe nazwy</span><strong id="newProgress">0 / 0</strong></div>
+            <div>
+              <span>Historia</span>
+              <strong id="historyProgress">0 / 0</strong>
+            </div>
+
+            <div>
+              <span>Nowe nazwy</span>
+              <strong id="newProgress">0 / 0</strong>
+            </div>
           </div>
-          <div class="current-check"><span class="pulse"></span><span id="currentName">Przygotowywanie…</span></div>
+
+          <div class="current-check">
+            <span class="pulse"></span>
+            <span id="currentName">Przygotowywanie…</span>
+          </div>
+
           <div class="button-row">
             <button id="pauseBtn" class="secondary-btn">Ⅱ Pauza</button>
             <button id="stopBtn" class="danger-btn">Zakończ</button>
           </div>
+
         </div>
 
         <div class="panel">
-          <div class="section-head"><h3>Ostatnie wyniki</h3><button class="text-btn" data-go="results">Zobacz wszystkie →</button></div>
-          <div id="recentResults" class="result-list empty-state">Wyniki pojawią się tutaj po skanowaniu.</div>
+
+          <div class="section-head">
+            <h3>Ostatnie wyniki</h3>
+            <button class="text-btn" data-go="results">Zobacz wszystkie →</button>
+          </div>
+
+          <div id="recentResults" class="result-list empty-state">
+            Wyniki pojawią się tutaj po skanowaniu.
+          </div>
+
         </div>
+
       </section>
 
       <section id="resultsView" class="view">
-        <div class="page-heading"><div class="eyebrow">YOUR SCANS</div><h2>Wyniki</h2><p>Wszystkie sprawdzone nazwy.</p></div>
-        <div class="filter-row">
-          <select id="resultStatus"><option value="all">Wszystkie statusy</option><option value="free">Wolne</option><option value="taken">Zajęte</option><option value="unknown">Niewiadomo</option></select>
-          <select id="resultSort"><option value="recent">Najnowsze</option><option value="name">Nazwa A–Z</option><option value="free">Wolne na górze</option></select>
+
+        <div class="page-heading">
+          <div class="eyebrow">YOUR SCANS</div>
+          <h2>Wyniki</h2>
+          <p>Wszystkie sprawdzone nazwy.</p>
         </div>
-        <div class="toolbar"><span id="resultTotal" class="muted">0 wyników</span><button id="exportResults" class="small-btn">Eksport CSV</button></div>
-        <div id="allResults" class="result-list empty-state">Brak wyników.</div>
+
+        <div class="filter-row">
+
+          <select id="resultStatus">
+            <option value="all">Wszystkie statusy</option>
+            <option value="free">Wolne</option>
+            <option value="taken">Zajęte</option>
+            <option value="unknown">Możliwe</option>
+          </select>
+
+          <select id="resultSort">
+            <option value="recent">Najnowsze</option>
+            <option value="name">Nazwa A–Z</option>
+            <option value="free">Wolne na górze</option>
+          </select>
+
+        </div>
+
+        <div class="toolbar">
+          <span id="resultTotal" class="muted">0 wyników</span>
+          <button id="exportResults" class="small-btn">Eksport CSV</button>
+        </div>
+
+        <div id="allResults" class="result-list empty-state">
+          Brak wyników.
+        </div>
+
       </section>
 
       <section id="favoritesView" class="view">
-        <div class="page-heading"><div class="eyebrow">SAVED NAMES</div><h2>Ulubione <span class="star">★</span></h2><p>Nicki, które chcesz zachować.</p></div>
-        <div class="filter-row"><select id="favoritePlatform"><option value="all">Wszystkie platformy</option><option value="discord">Discord</option><option value="minecraft">Minecraft</option></select><select id="favoriteLength"><option value="all">Każda długość</option></select></div>
-        <div id="favoriteList" class="result-list empty-state">Nie masz jeszcze ulubionych.</div>
-        <button id="exportFavorites" class="secondary-btn full-btn">Eksportuj ulubione CSV</button>
+
+        <div class="page-heading">
+          <div class="eyebrow">SAVED NAMES</div>
+          <h2>Ulubione <span class="star">★</span></h2>
+          <p>Nicki, które chcesz zachować.</p>
+        </div>
+
+        <div class="filter-row">
+
+          <select id="favoritePlatform">
+            <option value="all">Wszystkie platformy</option>
+            <option value="discord">Discord</option>
+            <option value="minecraft">Minecraft</option>
+          </select>
+
+          <select id="favoriteLength">
+            <option value="all">Każda długość</option>
+          </select>
+
+        </div>
+
+        <div id="favoriteList" class="result-list empty-state">
+          Nie masz jeszcze ulubionych.
+        </div>
+
+        <button id="exportFavorites" class="secondary-btn full-btn">
+          Eksportuj ulubione CSV
+        </button>
+
       </section>
 
       <section id="historyView" class="view">
-        <div class="page-heading"><div class="eyebrow">SCAN ARCHIVE</div><h2>Historia</h2><p>Historia jest rozdzielona według platformy i długości.</p></div>
-        <div class="filter-row"><select id="historyPlatform"><option value="all">Wszystkie platformy</option><option value="discord">Discord</option><option value="minecraft">Minecraft</option></select><select id="historyLength"><option value="all">Każda długość</option></select></div>
-        <div class="toolbar"><span id="historyTotal" class="muted">0 nazw</span><button id="clearHistory" class="small-btn danger-text">Wyczyść historię</button></div>
-        <div id="historyList" class="result-list empty-state">Historia jest pusta.</div>
+
+        <div class="page-heading">
+          <div class="eyebrow">SCAN ARCHIVE</div>
+          <h2>Historia</h2>
+          <p>Filtruj nazwy według platformy, statusu i długości.</p>
+        </div>
+
+        <div class="filter-row">
+
+          <select id="historyPlatform">
+            <option value="all">Wszystkie platformy</option>
+            <option value="discord">Discord</option>
+            <option value="minecraft">Minecraft</option>
+          </select>
+
+          <select id="historyLength">
+            <option value="all">Każda długość</option>
+          </select>
+
+          <select id="historyStatus">
+            <option value="all">Wszystkie statusy</option>
+            <option value="taken">Zajęte</option>
+            <option value="unknown">Możliwe</option>
+            <option value="free">Wolne</option>
+          </select>
+
+          <select id="historySort">
+            <option value="recent">Najnowsze</option>
+            <option value="oldest">Najstarsze</option>
+            <option value="name">Nazwa A–Z</option>
+          </select>
+
+        </div>
+
+        <div class="toolbar">
+          <span id="historyTotal" class="muted">0 nazw</span>
+          <button id="clearHistory" class="small-btn danger-text">
+            Wyczyść historię
+          </button>
+        </div>
+
+        <div id="historyList" class="result-list empty-state">
+          Historia jest pusta.
+        </div>
+
       </section>
 
       <section id="settingsView" class="view">
-        <div class="page-heading"><div class="eyebrow">PREFERENCES</div><h2>Ustawienia</h2><p>Konfiguracja sprawdzania i danych.</p></div>
+
+        <div class="page-heading">
+          <div class="eyebrow">PREFERENCES</div>
+          <h2>Ustawienia</h2>
+          <p>Konfiguracja sprawdzania i danych.</p>
+        </div>
+
         <div class="panel">
+
           <h3>Źródła sprawdzania</h3>
-          <div class="notice warning-notice"><strong>Ważne:</strong> aplikacja nie udaje, że zna dostępność nicku. Bez działającego, wiarygodnego dostawcy wynik pozostanie „Niewiadomo”. Discord i Minecraft mają różne zasady oraz ograniczenia sprawdzania.</div>
-          <label class="field-label" for="discordEndpoint">Endpoint sprawdzający Discord (opcjonalny)</label>
-          <input id="discordEndpoint" class="text-input" type="url" placeholder="https://twoj-serwer.pl/check">
-          <label class="field-label" for="minecraftEndpoint">Endpoint sprawdzający Minecraft (opcjonalny)</label>
-          <input id="minecraftEndpoint" class="text-input" type="url" placeholder="https://twoj-serwer.pl/check">
-          <p class="help-text">Endpoint musi być zaufany, obsługiwać HTTPS i CORS oraz przyjmować POST JSON: <code>{"username":"abc","platform":"discord"}</code>. Odpowiedź: <code>{"available":true}</code> lub <code>{"available":false}</code>. Błąd, limit lub niejednoznaczna odpowiedź = „Niewiadomo”.</p>
-          <button id="saveSettings" class="primary-btn">Zapisz ustawienia</button>
+
+          <div class="notice warning-notice">
+            <strong>Ważne:</strong>
+            aplikacja nie udaje, że zna dostępność nicku.
+            Bez wiarygodnego potwierdzenia wynik pozostanie „Możliwe”.
+            Discord i Minecraft mają różne zasady oraz ograniczenia sprawdzania.
+          </div>
+
+          <label class="field-label" for="discordEndpoint">
+            Endpoint sprawdzający Discord (opcjonalny)
+          </label>
+
+          <input
+            id="discordEndpoint"
+            class="text-input"
+            type="url"
+            placeholder="https://twoj-serwer.pl/check"
+          >
+
+          <label class="field-label" for="minecraftEndpoint">
+            Endpoint sprawdzający Minecraft (opcjonalny)
+          </label>
+
+          <input
+            id="minecraftEndpoint"
+            class="text-input"
+            type="url"
+            placeholder="https://twoj-serwer.pl/check"
+          >
+
+          <p class="help-text">
+            Endpoint Discord musi być zaufany, obsługiwać HTTPS i CORS
+            oraz przyjmować POST JSON:
+            <code>{"username":"abc","platform":"discord"}</code>.
+            Odpowiedź:
+            <code>{"available":true}</code>
+            lub
+            <code>{"available":false}</code>.
+            Błąd, limit lub niejednoznaczna odpowiedź oznacza „Możliwe”.
+          </p>
+
+          <button id="saveSettings" class="primary-btn">
+            Zapisz ustawienia
+          </button>
+
         </div>
+
         <div class="panel">
+
           <h3>Dane aplikacji</h3>
-          <p class="help-text">Historia, ulubione i ustawienia są przechowywane lokalnie w pamięci przeglądarki na tym urządzeniu.</p>
-          <button id="backupData" class="secondary-btn full-btn">Pobierz kopię danych JSON</button>
-          <button id="resetData" class="danger-btn full-btn">Usuń wszystkie dane</button>
+
+          <p class="help-text">
+            Historia, ulubione i ustawienia są przechowywane lokalnie
+            w pamięci przeglądarki na tym urządzeniu.
+          </p>
+
+          <button id="backupData" class="secondary-btn full-btn">
+            Pobierz kopię danych JSON
+          </button>
+
+          <button id="resetData" class="danger-btn full-btn">
+            Usuń wszystkie dane
+          </button>
+
         </div>
+
       </section>
+
     </main>
 
     <nav class="bottom-nav">
-      <button class="nav-item active" data-view="scanView"><span>⌕</span><small>Skaner</small></button>
-      <button class="nav-item" data-view="resultsView"><span>▤</span><small>Wyniki</small></button>
-      <button class="nav-item" data-view="favoritesView"><span>★</span><small>Ulubione</small></button>
-      <button class="nav-item" data-view="historyView"><span>◷</span><small>Historia</small></button>
+
+      <button class="nav-item active" data-view="scanView">
+        <span>⌕</span>
+        <small>Skaner</small>
+      </button>
+
+      <button class="nav-item" data-view="resultsView">
+        <span>▤</span>
+        <small>Wyniki</small>
+      </button>
+
+      <button class="nav-item" data-view="favoritesView">
+        <span>★</span>
+        <small>Ulubione</small>
+      </button>
+
+      <button class="nav-item" data-view="historyView">
+        <span>◷</span>
+        <small>Historia</small>
+      </button>
+
     </nav>
+
   </div>
+
   <div id="toast" class="toast"></div>
+
   <script src="app.js"></script>
 </body>
 </html>
