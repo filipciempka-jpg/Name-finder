@@ -22,6 +22,7 @@ exports.handler = async (event) => {
     if (!/^[a-zA-Z0-9_]{3,16}$/.test(username)) {
       return respond(400, {
         available: null,
+        status: "unknown",
         error: "Invalid Minecraft Java username"
       });
     }
@@ -32,43 +33,28 @@ exports.handler = async (event) => {
     let response;
 
     try {
-      const url =
-        "https://mcprofiles.me/api/player/" +
-        encodeURIComponent(username) +
-        "?type=java";
-
-      response = await fetch(url, {
-        method: "GET",
-        headers: { "Accept": "application/json" },
-        signal: controller.signal
-      });
+      response = await fetch(
+        "https://api.mojang.com/users/profiles/minecraft/" +
+          encodeURIComponent(username),
+        {
+          method: "GET",
+          headers: { "Accept": "application/json" },
+          signal: controller.signal
+        }
+      );
     } finally {
       clearTimeout(timer);
     }
 
-    if (!response.ok) {
-      return respond(200, { available: null });
-    }
-
-    const result = await response.json();
-
-    if (
-      result.kind === "profile" &&
-      result.data?.username?.toLowerCase() === username.toLowerCase()
-    ) {
+    if (response.status === 200) {
       return respond(200, {
         available: false,
         status: "taken"
       });
     }
 
-    if (result.kind === "notFound") {
-  return respond(200, {
-    available: null,
-    status: "unknown"
-  });
-}
-
+    // Brak profilu nie jest wystarczającym
+    // potwierdzeniem dostępności nazwy.
     return respond(200, {
       available: null,
       status: "unknown"
