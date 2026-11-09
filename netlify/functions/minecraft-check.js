@@ -1,5 +1,3 @@
-
-
 exports.handler = async (event) => {
   const headers = {
     "Content-Type": "application/json",
@@ -29,7 +27,11 @@ exports.handler = async (event) => {
     username = String(username || "").trim();
 
     if (!/^[a-zA-Z0-9_]{3,16}$/.test(username)) {
-      return respond(400, { error: "Invalid username" });
+      return respond(400, {
+        username,
+        status: "invalid",
+        diagnostic: "invalid_username"
+      });
     }
 
     const controller = new AbortController();
@@ -42,6 +44,7 @@ exports.handler = async (event) => {
         "https://api.mojang.com/users/profiles/minecraft/" +
           encodeURIComponent(username),
         {
+          method: "GET",
           headers: { Accept: "application/json" },
           signal: controller.signal
         }
@@ -50,19 +53,30 @@ exports.handler = async (event) => {
       clearTimeout(timer);
     }
 
-    const result = {
-      username,
-      upstreamStatus: response.status,
-      status: "unknown",
-      available: null
-    };
-
     if (response.status === 200) {
-      result.status = "taken";
-      result.available = false;
+      return respond(200, {
+        username,
+        status: "taken",
+        available: false,
+        diagnostic: "profile_exists"
+      });
     }
 
-    return respond(200, result);
+    if (response.status === 204 || response.status === 404) {
+      return respond(200, {
+        username,
+        status: "unknown",
+        available: null,
+        diagnostic: "profile_not_found_availability_unconfirmed"
+      });
+    }
+
+    return respond(200, {
+      username,
+      status: "unknown",
+      available: null,
+      diagnostic: "mojang_http_" + response.status
+    });
 
   } catch (error) {
     return respond(200, {
@@ -74,3 +88,4 @@ exports.handler = async (event) => {
     });
   }
 };
+
