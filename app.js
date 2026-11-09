@@ -15,7 +15,31 @@ function setPlatform(p){platform=p;$$(".segment").forEach(b=>b.classList.toggle(
 $("#platforms").addEventListener("click",e=>{const b=e.target.closest("[data-platform]");if(b)setPlatform(b.dataset.platform)});
 $("#amount").oninput=()=>$("#amountLabel").textContent=Number($("#amount").value).toLocaleString("pl-PL");
 function getCharset(){return $('input[name="charset"]:checked').value}
-function makeName(len,charset){const letters="abcdefghijklmnopqrstuvwxyz",digits="0123456789",pool=charset==="mixed"?letters+digits:letters;let out="";for(let i=0;i<len;i++)out+=pool[Math.floor(Math.random()*pool.length)];return out}
+
+function makeName(len,charset){
+  const letters="abcdefghijklmnopqrstuvwxyz";
+  const digits="0123456789";
+  const underscore="_";
+
+  let pool=letters;
+
+  if(charset==="mixed"){
+    pool=letters+digits;
+  }
+
+  if(charset==="full"){
+    pool=letters+digits+underscore;
+  }
+
+  let out="";
+
+  for(let i=0;i<len;i++){
+    out+=pool[Math.floor(Math.random()*pool.length)];
+  }
+
+  return out;
+}
+
 function statusLabel(s){return s==="free"?"Wolna":s==="taken"?"Zajęta":"Niewiadomo"}
 function statusClass(s){return s==="free"?"tag-free":s==="taken"?"tag-taken":"tag-unknown"}
 function getEndpoint(p){return p==="discord"?db.settings.discordEndpoint:db.settings.minecraftEndpoint}
