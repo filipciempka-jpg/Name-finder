@@ -63,12 +63,11 @@ exports.handler = async (event) => {
     }
 
     if (result.kind === "notFound") {
-      return respond(200, {
-        available: true,
-        status: "free",
-        confidence: "heuristic"
-      });
-    }
+  return respond(200, {
+    available: null,
+    status: "unknown"
+  });
+}
 
     return respond(200, {
       available: null,
