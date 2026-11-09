@@ -1,174 +1,754 @@
-const $ = s => document.querySelector(s);
-const $$ = s => [...document.querySelectorAll(s)];
+"use strict";
+
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => [...document.querySelectorAll(s)];
+
 const KEY = "namefinder_v1";
-const defaults = {records:[], favorites:[], settings:{discordEndpoint:"",minecraftEndpoint:""}};
-let db = loadDB(), platform="discord", length=2, job=null, scanTimer=null;
-function loadDB(){try{return {...defaults,...JSON.parse(localStorage.getItem(KEY)||"{}")}}catch{return structuredClone(defaults)}}
-function saveDB(){localStorage.setItem(KEY,JSON.stringify(db))}
-function id(){return crypto.randomUUID?crypto.randomUUID():Date.now()+"_"+Math.random()}
-function toast(msg){const t=$("#toast");t.textContent=msg;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2300)}
-function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
-function platformLabel(p){return p==="discord"?"Discord":"Minecraft"}
-function minLen(){return platform==="discord"?2:3}
-function renderLengths(){const min=minLen();if(length<min)length=min;$("#lengthHint").textContent=`${min}–16 znaków`;$ ("#lengthGrid").innerHTML=Array.from({length:17-min},(_,i)=>i+min).map(n=>`<button class="length-btn ${n===length?"selected":""}" data-length="${n}">${n}</button>`).join("");$$(".length-btn").forEach(b=>b.onclick=()=>{length=+b.dataset.length;renderLengths()})}
-function setPlatform(p){platform=p;$$(".segment").forEach(b=>b.classList.toggle("selected",b.dataset.platform===p));renderLengths()}
-$("#platforms").addEventListener("click",e=>{const b=e.target.closest("[data-platform]");if(b)setPlatform(b.dataset.platform)});
-$("#amount").oninput=()=>$("#amountLabel").textContent=Number($("#amount").value).toLocaleString("pl-PL");
-function getCharset(){return $('input[name="charset"]:checked').value}
 
-function makeName(len,charset){
-  const letters="abcdefghijklmnopqrstuvwxyz";
-  const digits="0123456789";
-  const underscore="_";
-
-  let pool=letters;
-
-  if(charset==="mixed"){
-    pool=letters+digits;
+const defaults = {
+  records: [],
+  favorites: [],
+  settings: {
+    discordEndpoint: "",
+    minecraftEndpoint: ""
   }
+};
 
-  if(charset==="full"){
-    pool=letters+digits+underscore;
+function loadDB() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(KEY) || "{}");
+    return {
+      records: Array.isArray(saved.records) ? saved.records : [],
+      favorites: Array.isArray(saved.favorites) ? saved.favorites : [],
+      settings: { ...defaults.settings, ...(saved.settings || {}) }
+    };
+  } catch {
+    return structuredClone(defaults);
   }
-
-  let out="";
-
-  for(let i=0;i<len;i++){
-    out+=pool[Math.floor(Math.random()*pool.length)];
-  }
-
-  return out;
 }
 
-function statusLabel(s){return s==="free"?"Wolna":s==="taken"?"Zajęta":"Niewiadomo"}
-function statusClass(s){return s==="free"?"tag-free":s==="taken"?"tag-taken":"tag-unknown"}
-function getEndpoint(p){return p==="discord"?db.settings.discordEndpoint:db.settings.minecraftEndpoint}
+let db = loadDB();
+let platform = "discord";
+let length = 2;
+let job = null;
+let scanTimer = null;
+let toastTimer = null;
 
-async function checkName(name,p){
-  if(p==="minecraft"){
-    try{
-      const res=await fetch("/.netlify/functions/minecraft-check",{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({username:name})
-      });
+function saveDB() {
+  localStorage.setItem(KEY, JSON.stringify(db));
+}
 
-      if(!res.ok)return "unknown";
+function toast(message) {
+  const el = $("#toast");
+  if (!el) return;
+  el.textContent = message;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 2600);
+}
 
-      const data=await res.json();
+function getCharset() {
+  return $('input[name="charset"]:checked')?.value || "letters";
+}
 
-      if(data.status==="taken" || data.available===false)
+function getEndpoint(p) {
+  return p === "discord"
+    ? db.settings.discordEndpoint
+    : db.settings.minecraftEndpoint;
+}
+
+function minLen(p) {
+  return p === "minecraft" ? 3 : 2;
+}
+
+function maxLen() {
+  return 16;
+}
+
+function makeName(len, charset) {
+  const letters = "abcdefghijklmnopqrstuvwxyz";
+  const digits = "0123456789";
+  const underscore = "_";
+
+  let pool = letters;
+
+  if (charset === "mixed") pool = letters + digits;
+  if (charset === "full") pool = letters + digits + underscore;
+
+  let output = "";
+
+  for (let i = 0; i < len; i++) {
+    output += pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  return output;
+}
+
+function makeQueue(p, len, amount, charset) {
+  const old = db.records
+    .filter((r) => r.platform === p && r.length === len)
+    .sort((a, b) => String(a.checkedAt).localeCompare(String(b.checkedAt)));
+
+  const historyItems = old.slice(0, amount).map((r) => r.name);
+  const remaining = Math.max(0, amount - historyItems.length);
+  const used = new Set(old.map((r) => r.name));
+
+  const alphabetSize =
+    charset === "letters" ? 26 :
+    charset === "mixed" ? 36 :
+    charset === "full" ? 37 : 26;
+
+  const maxSpace = alphabetSize ** len;
+  const target = Math.min(remaining, Math.max(0, maxSpace - used.size));
+  const newItems = [];
+
+  let attempts = 0;
+  const maxAttempts = target * 30 + 200;
+
+  while (newItems.length < target && attempts < maxAttempts) {
+    attempts++;
+    const name = makeName(len, charset);
+
+    if (!used.has(name)) {
+      used.add(name);
+      newItems.push(name);
+    }
+  }
+
+  return { historyItems, newItems };
+}
+
+async function checkName(name, p) {
+  if (p === "minecraft") {
+    try {
+      const response = await fetch(
+        "/.netlify/functions/minecraft-check",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: name })
+        }
+      );
+
+      if (!response.ok) return "unknown";
+
+      const data = await response.json();
+
+      if (data.status === "taken" || data.available === false) {
         return "taken";
+      }
 
-      if(data.status==="free" && data.available===true)
+      if (data.status === "free" && data.available === true) {
         return "free";
+      }
 
       return "unknown";
-    }catch{
+    } catch {
       return "unknown";
     }
   }
 
-  const endpoint=getEndpoint(p);
-  if(!endpoint)return "unknown";
+  const endpoint = getEndpoint(p);
+  if (!endpoint) return "unknown";
 
-  try{
-    const u=new URL(endpoint);
-    if(u.protocol!=="https:")return "unknown";
+  try {
+    const url = new URL(endpoint);
+    if (url.protocol !== "https:") return "unknown";
 
-    const controller=new AbortController();
-    const timer=setTimeout(()=>controller.abort(),9000);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 9000);
 
-    try{
-      const res=await fetch(u,{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({username:name,platform:p}),
-        signal:controller.signal
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: name, platform: p }),
+        signal: controller.signal
       });
 
-      if(!res.ok)return "unknown";
+      if (!response.ok) return "unknown";
 
-      const data=await res.json();
+      const data = await response.json();
 
-      if(data.available===true)return "free";
-      if(data.available===false)return "taken";
+      if (data.available === true) return "free";
+      if (data.available === false) return "taken";
+
       return "unknown";
-    }finally{
+    } finally {
       clearTimeout(timer);
     }
-  }catch{
+  } catch {
     return "unknown";
   }
 }
 
-function recordResult(name,p,len,status,source){
-  const now=new Date().toISOString();let r=db.records.find(x=>x.name===name&&x.platform===p&&x.length===len);
-  if(r){r.previousStatus=r.status;r.status=status;r.checkedAt=now;r.checks=(r.checks||0)+1;r.lastSource=source}
-  else db.records.push({id:id(),name,platform:p,length:len,status,previousStatus:null,checkedAt:now,checks:1,lastSource:source});
-  saveDB();return db.records.find(x=>x.name===name&&x.platform===p&&x.length===len)
+function recordResult(name, p, len, status) {
+  const checkedAt = new Date().toISOString();
+
+  const existing = db.records.find(
+    (r) => r.platform === p && r.name === name
+  );
+
+  if (existing) {
+    existing.status = status;
+    existing.length = len;
+    existing.checkedAt = checkedAt;
+  } else {
+    db.records.push({
+      name,
+      platform: p,
+      length: len,
+      status,
+      checkedAt
+    });
+  }
+
+  saveDB();
+  renderAll();
 }
-function favoriteKey(r){return `${r.platform}|${r.length}|${r.name}`}
-function isFav(r){return db.favorites.includes(favoriteKey(r))}
-function toggleFav(r){const k=favoriteKey(r);db.favorites=isFav(r)?db.favorites.filter(x=>x!==k):[...db.favorites,k];saveDB();renderAll();toast(isFav(r)?"Dodano do ulubionych":"Usunięto z ulubionych")}
-async function copyName(name){try{await navigator.clipboard.writeText(name);toast(`Skopiowano: ${name}`)}catch{toast("Nie udało się skopiować. Sprawdź uprawnienia Safari.")}}
-function resultHTML(r){return `<div class="result-item"><div class="result-main"><div class="result-name">${esc(r.name)}</div><div class="result-meta">${platformLabel(r.platform)} · ${r.length} znaki · ${new Date(r.checkedAt).toLocaleString("pl-PL")} · ${r.checks||1} sprawdzeń</div></div><span class="status-tag ${statusClass(r.status)}">${statusLabel(r.status)}</span><button class="star-btn ${isFav(r)?"on":""}" data-fav="${esc(favoriteKey(r))}" aria-label="Ulubione">${isFav(r)?"★":"☆"}</button><button class="copy-btn" data-copy="${esc(r.name)}" aria-label="Kopiuj">▢</button></div>`}
-function bindResultActions(root){root.querySelectorAll("[data-fav]").forEach(b=>b.onclick=()=>{const r=db.records.find(x=>favoriteKey(x)===b.dataset.fav);if(r)toggleFav(r)});root.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>copyName(b.dataset.copy))}
-function renderRecent(){const list=[...db.records].sort((a,b)=>b.checkedAt.localeCompare(a.checkedAt)).slice(0,5);$("#recentResults").classList.toggle("empty-state",!list.length);$("#recentResults").innerHTML=list.length?list.map(resultHTML).join(""):"Wyniki pojawią się tutaj po skanowaniu.";bindResultActions($("#recentResults"))}
-function renderResults(){let a=[...db.records],f=$("#resultStatus").value,s=$("#resultSort").value;if(f!=="all")a=a.filter(r=>r.status===f);if(s==="name")a.sort((x,y)=>x.name.localeCompare(y.name));else if(s==="free")a.sort((x,y)=>({free:0,taken:1,unknown:2}[x.status]-({free:0,taken:1,unknown:2}[y.status])));else a.sort((x,y)=>y.checkedAt.localeCompare(x.checkedAt));$("#resultTotal").textContent=`${a.length} wyników`;$("#allResults").classList.toggle("empty-state",!a.length);$("#allResults").innerHTML=a.length?a.map(resultHTML).join(""):"Brak wyników.";bindResultActions($("#allResults"))}
-function renderFavorites(){const p=$("#favoritePlatform").value,l=$("#favoriteLength").value;let a=db.records.filter(isFav);if(p!=="all")a=a.filter(r=>r.platform===p);if(l!=="all")a=a.filter(r=>r.length===+l);$("#favoriteList").classList.toggle("empty-state",!a.length);$("#favoriteList").innerHTML=a.length?a.sort((x,y)=>x.name.localeCompare(y.name)).map(resultHTML).join(""):"Nie masz jeszcze ulubionych.";bindResultActions($("#favoriteList"))}
-function renderHistory(){const p=$("#historyPlatform").value,l=$("#historyLength").value;let a=[...db.records];if(p!=="all")a=a.filter(r=>r.platform===p);if(l!=="all")a=a.filter(r=>r.length===+l);a.sort((x,y)=>y.checkedAt.localeCompare(x.checkedAt));$("#historyTotal").textContent=`${a.length} nazw`;$("#historyList").classList.toggle("empty-state",!a.length);$("#historyList").innerHTML=a.length?a.map(resultHTML).join(""):"Historia jest pusta.";bindResultActions($("#historyList"))}
-function fillLengthFilters(){for(const id of ["favoriteLength","historyLength"]){const sel=$( "#"+id),old=sel.value;sel.innerHTML='<option value="all">Każda długość</option>'+Array.from({length:15},(_,i)=>i+2).map(n=>`<option value="${n}">${n} znaków</option>`).join("");sel.value=old||"all"}}
-function renderAll(){renderRecent();renderResults();renderFavorites();renderHistory();fillLengthFilters()}
-function updateJobUI(){if(!job)return;const done=job.index,total=job.total,pct=total?Math.floor(done/total*100):0;$("#progressText").textContent=`${done} / ${total}`;$("#progressPercent").textContent=pct+"%";$("#progressBar").style.width=pct+"%";$("#freeCount").textContent=job.free;$("#takenCount").textContent=job.taken;$("#unknownCount").textContent=job.unknown;$("#checkedCount").textContent=done;$("#historyProgress").textContent=`${job.historyIndex} / ${job.historyItems.length}`;$("#newProgress").textContent=`${job.newIndex} / ${job.newItems.length}`;$("#currentName").textContent=job.current||"Oczekiwanie…";$("#scanState").textContent=job.state==="paused"?"PAUZA":job.state==="done"?"ZAKOŃCZONO":job.state==="stopped"?"ZATRZYMANO":"W TRAKCIE";$("#scanState").className="status-pill "+(job.state==="paused"?"paused":job.state==="done"||job.state==="stopped"?"done":"running");$("#pauseBtn").textContent=job.state==="paused"?"▶ Wznów":"Ⅱ Pauza";$("#pauseBtn").disabled=["done","stopped"].includes(job.state)}
-function persistJob(){try{localStorage.setItem("namefinder_job",JSON.stringify(job))}catch{}}
-function makeQueue(p,len,amount,charset){
-  const old=db.records.filter(r=>r.platform===p&&r.length===len).sort((a,b)=>a.checkedAt.localeCompare(b.checkedAt));
-  const historyItems=old.slice(0,amount).map(r=>r.name),remaining=Math.max(0,amount-historyItems.length),used=new Set(old.map(r=>r.name)),newItems=[];
-  const maxSpace=charset==="letters"?26**len:36**len;
-  const target=Math.min(remaining,maxSpace-used.size);
-  let attempts=0;while(newItems.length<target&&attempts<target*20+100){attempts++;const n=makeName(len,charset);if(!used.has(n)){used.add(n);newItems.push(n)}}
-  return {historyItems,newItems};
+
+function getFavoriteKey(item) {
+  return `${item.platform}:${item.name}`;
 }
-function startScan(){if(job&&job.state==="paused"){resumeScan();return}if(job&&job.state==="running"){toast("Skanowanie już trwa.");return}
-  const amount=+$("#amount").value,charset=getCharset(),q=makeQueue(platform,length,amount,charset),total=q.historyItems.length+q.newItems.length;
-  if(!total){toast("Nie udało się utworzyć kolejki nazw.");return}
-  job={platform,length,total,index:0,free:0,taken:0,unknown:0,historyItems:q.historyItems,newItems:q.newItems,historyIndex:0,newIndex:0,current:"Przygotowywanie…",state:"running",charset,startedAt:new Date().toISOString()};
-  $("#scanPanel").classList.remove("hidden");$("#scanTitle").textContent=`Skanowanie ${platformLabel(platform)} · ${length} znaków`;updateJobUI();persistJob();runNext();
+
+function isFavorite(record) {
+  return db.favorites.some((f) => {
+    if (typeof f === "string") {
+      return f === getFavoriteKey(record) || f === record.name;
+    }
+    return f.platform === record.platform && f.name === record.name;
+  });
 }
-async function runNext(){
-  if(!job||job.state!=="running")return;
-  if(job.index>=job.total){job.state="done";job.current="Skanowanie zakończone";updateJobUI();persistJob();renderAll();toast("Skanowanie zakończone.");return}
-  const fromHistory=job.historyIndex<job.historyItems.length;
-  const name=fromHistory?job.historyItems[job.historyIndex]:job.newItems[job.newIndex];job.current=name;updateJobUI();
-  const status=await checkName(name,job.platform);
-  if(!job||job.state!=="running")return;
-  const record=recordResult(name,job.platform,job.length,status,fromHistory?"history":"new");
-  if(status==="free")job.free++;else if(status==="taken")job.taken++;else job.unknown++;
-  if(fromHistory)job.historyIndex++;else job.newIndex++;
-  job.index++;updateJobUI();persistJob();renderRecent();
-  scanTimer=setTimeout(
-  runNext,
-  job.platform==="minecraft"?1250:250
-);
+
+function toggleFavorite(record) {
+  const index = db.favorites.findIndex((f) => {
+    if (typeof f === "string") {
+      return f === getFavoriteKey(record) || f === record.name;
+    }
+    return f.platform === record.platform && f.name === record.name;
+  });
+
+  if (index >= 0) {
+    db.favorites.splice(index, 1);
+    toast("Usunięto z ulubionych");
+  } else {
+    db.favorites.push({
+      name: record.name,
+      platform: record.platform,
+      length: record.length,
+      status: record.status,
+      checkedAt: record.checkedAt
+    });
+    toast("Dodano do ulubionych");
+  }
+
+  saveDB();
+  renderAll();
 }
-function pauseScan(){if(!job)return;if(job.state==="running"){job.state="paused";clearTimeout(scanTimer);updateJobUI();persistJob()}else if(job.state==="paused")resumeScan()}
-function resumeScan(){if(!job||job.state!=="paused")return;job.state="running";updateJobUI();persistJob();runNext()}
-function stopScan(){if(!job||["done","stopped"].includes(job.state))return;clearTimeout(scanTimer);job.state="stopped";job.current="Skanowanie zatrzymane";updateJobUI();persistJob();renderAll()}
-$("#startBtn").onclick=startScan;$("#pauseBtn").onclick=pauseScan;$("#stopBtn").onclick=stopScan;
-$("#resultStatus").onchange=renderResults;$("#resultSort").onchange=renderResults;$("#favoritePlatform").onchange=renderFavorites;$("#favoriteLength").onchange=renderFavorites;$("#historyPlatform").onchange=renderHistory;$("#historyLength").onchange=renderHistory;
-function download(name,content,type){const blob=new Blob([content],{type}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=name;a.click();URL.revokeObjectURL(url)}
-function csv(rows){const keys=["name","platform","length","status","previousStatus","checkedAt","checks"];return [keys.join(","),...rows.map(r=>keys.map(k=>'"'+String(r[k]??"").replaceAll('"','""')+'"').join(","))].join("\n")}
-$("#exportResults").onclick=()=>download("name-finder-wyniki.csv",csv(db.records),"text/csv;charset=utf-8");
-$("#exportFavorites").onclick=()=>download("name-finder-ulubione.csv",csv(db.records.filter(isFav)),"text/csv;charset=utf-8");
-$("#clearHistory").onclick=()=>{if(confirm("Usunąć całą historię skanowania? Ulubione również zostaną usunięte, jeśli ich nicki nie będą już w historii.")){db.records=[];db.favorites=[];saveDB();renderAll();toast("Historia wyczyszczona.")}};
-$("#settingsBtn").onclick=()=>showView("settingsView");
-$("#saveSettings").onclick=()=>{db.settings.discordEndpoint=$("#discordEndpoint").value.trim();db.settings.minecraftEndpoint=$("#minecraftEndpoint").value.trim();saveDB();toast("Ustawienia zapisane.")};
-$("#discordEndpoint").value=db.settings.discordEndpoint||"";$("#minecraftEndpoint").value=db.settings.minecraftEndpoint||"";
-$("#backupData").onclick=()=>download("name-finder-backup.json",JSON.stringify(db,null,2),"application/json");
-$("#resetData").onclick=()=>{if(confirm("Na pewno usunąć historię, ulubione i ustawienia?")){localStorage.removeItem(KEY);localStorage.removeItem("namefinder_job");db=structuredClone(defaults);job=null;saveDB();location.reload()}};
-function showView(id){$$(".view").forEach(v=>v.classList.toggle("active",v.id===id));$$(".nav-item").forEach(b=>b.classList.toggle("active",b.dataset.view===id));if(id==="resultsView")renderResults();if(id==="favoritesView")renderFavorites();if(id==="historyView")renderHistory();if(id==="settingsView"){$("#discordEndpoint").value=db.settings.discordEndpoint||"";$("#minecraftEndpoint").value=db.settings.minecraftEndpoint||""}window.scrollTo(0,0)}
-$$("[data-view]").forEach(b=>b.onclick=()=>showView(b.dataset.view));$$("[data-go]").forEach(b=>b.onclick=()=>showView(b.dataset.go==="results"?"resultsView":b.dataset.go));
-function restoreJob(){try{const raw=localStorage.getItem("namefinder_job");if(!raw)return;const saved=JSON.parse(raw);if(saved&&["paused","running"].includes(saved.state)){saved.state="paused";job=saved;$("#scanPanel").classList.remove("hidden");updateJobUI();toast("Przywrócono przerwane skanowanie. Możesz je wznowić.")}}catch{}}
-setPlatform("discord");$("#amount").dispatchEvent(new Event("input"));fillLengthFilters();renderAll();restoreJob();
-if("serviceWorker" in navigator && location.protocol.startsWith("http"))navigator.serviceWorker.register("./sw.js").catch(()=>{});
+
+function escapeHTML(value) {
+  return String(value).replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#039;"
+  })[char]);
+}
+
+function statusLabel(status) {
+  if (status === "free") return "Wolna";
+  if (status === "taken") return "Zajęta";
+  return "Niewiadomo";
+}
+
+function renderRecord(record) {
+  const favorite = isFavorite(record);
+
+  return `
+    <div class="result-item">
+      <div class="result-main">
+        <strong>${escapeHTML(record.name)}</strong>
+        <small>${record.platform === "minecraft" ? "Minecraft" : "Discord"} · ${record.length} znaków</small>
+      </div>
+      <span class="result-status ${escapeHTML(record.status || "unknown")}">
+        ${statusLabel(record.status)}
+      </span>
+      <button class="favorite-btn" data-favorite="${escapeHTML(record.platform)}:${escapeHTML(record.name)}" aria-label="Ulubione">
+        ${favorite ? "★" : "☆"}
+      </button>
+    </div>
+  `;
+}
+
+function renderList(element, records, emptyText) {
+  if (!element) return;
+
+  if (!records.length) {
+    element.classList.add("empty-state");
+    element.textContent = emptyText;
+    return;
+  }
+
+  element.classList.remove("empty-state");
+  element.innerHTML = records.map(renderRecord).join("");
+}
+
+function renderRecent() {
+  const recent = [...db.records]
+    .sort((a, b) => String(b.checkedAt).localeCompare(String(a.checkedAt)))
+    .slice(0, 5);
+
+  renderList($("#recentResults"), recent, "Wyniki pojawią się tutaj po skanowaniu.");
+}
+
+function renderResults() {
+  let records = [...db.records];
+
+  const status = $("#resultStatus")?.value || "all";
+  const sort = $("#resultSort")?.value || "recent";
+
+  if (status !== "all") {
+    records = records.filter((r) => r.status === status);
+  }
+
+  if (sort === "name") {
+    records.sort((a, b) => a.name.localeCompare(b.name));
+  } else if (sort === "free") {
+    const order = { free: 0, taken: 1, unknown: 2 };
+    records.sort((a, b) => order[a.status] - order[b.status]);
+  } else {
+    records.sort((a, b) => String(b.checkedAt).localeCompare(String(a.checkedAt)));
+  }
+
+  $("#resultTotal").textContent = `${records.length} wyników`;
+  renderList($("#allResults"), records, "Brak wyników.");
+}
+
+function renderFavorites() {
+  const platformFilter = $("#favoritePlatform")?.value || "all";
+  const lengthFilter = $("#favoriteLength")?.value || "all";
+
+  let favorites = db.favorites.map((f) => {
+    if (typeof f === "string") {
+      const [p, ...parts] = f.split(":");
+      const name = parts.join(":");
+      return db.records.find((r) => r.platform === p && r.name === name) ||
+        db.records.find((r) => r.name === name) ||
+        { name, platform: p || "discord", length: name.length, status: "unknown" };
+    }
+    return f;
+  });
+
+  if (platformFilter !== "all") {
+    favorites = favorites.filter((f) => f.platform === platformFilter);
+  }
+
+  if (lengthFilter !== "all") {
+    favorites = favorites.filter((f) => String(f.length) === lengthFilter);
+  }
+
+  renderList($("#favoriteList"), favorites, "Nie masz jeszcze ulubionych.");
+}
+
+function renderHistory() {
+  const platformFilter = $("#historyPlatform")?.value || "all";
+  const lengthFilter = $("#historyLength")?.value || "all";
+
+  let records = [...db.records];
+
+  if (platformFilter !== "all") {
+    records = records.filter((r) => r.platform === platformFilter);
+  }
+
+  if (lengthFilter !== "all") {
+    records = records.filter((r) => String(r.length) === lengthFilter);
+  }
+
+  records.sort((a, b) => String(b.checkedAt).localeCompare(String(a.checkedAt)));
+
+  $("#historyTotal").textContent = `${records.length} nazw`;
+  renderList($("#historyList"), records, "Historia jest pusta.");
+}
+
+function fillLengthFilters() {
+  for (const id of ["favoriteLength", "historyLength"]) {
+    const select = $("#" + id);
+    if (!select) continue;
+
+    const current = select.value;
+    select.innerHTML = '<option value="all">Każda długość</option>';
+
+    for (let i = 2; i <= 16; i++) {
+      const option = document.createElement("option");
+      option.value = String(i);
+      option.textContent = `${i} znaków`;
+      select.appendChild(option);
+    }
+
+    select.value = current || "all";
+  }
+}
+
+function renderAll() {
+  renderRecent();
+  renderResults();
+  renderFavorites();
+  renderHistory();
+  fillLengthFilters();
+}
+
+function renderLengths() {
+  const grid = $("#lengthGrid");
+  if (!grid) return;
+
+  const minimum = minLen(platform);
+  const current = Math.max(minimum, Math.min(16, length));
+
+  length = current;
+  $("#lengthHint").textContent = `${minimum}–16 znaków`;
+
+  grid.innerHTML = "";
+
+  for (let i = minimum; i <= 16; i++) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `length-option ${i === length ? "selected" : ""}`;
+    button.textContent = i;
+    button.addEventListener("click", () => {
+      length = i;
+      renderLengths();
+    });
+    grid.appendChild(button);
+  }
+}
+
+function setPlatform(nextPlatform) {
+  if (!["discord", "minecraft"].includes(nextPlatform)) return;
+
+  platform = nextPlatform;
+
+  $$("#platforms [data-platform]").forEach((button) => {
+    button.classList.toggle(
+      "selected",
+      button.dataset.platform === platform
+    );
+  });
+
+  if (platform === "minecraft" && length < 3) length = 3;
+
+  renderLengths();
+}
+
+function setView(viewId) {
+  $$(".view").forEach((view) => {
+    view.classList.toggle("active", view.id === viewId);
+  });
+
+  $$(".nav-item").forEach((button) => {
+    button.classList.toggle("active", button.dataset.view === viewId);
+  });
+
+  if (viewId === "settingsView") {
+    $("#discordEndpoint").value = db.settings.discordEndpoint || "";
+    $("#minecraftEndpoint").value = db.settings.minecraftEndpoint || "";
+  }
+}
+
+function updateProgress() {
+  if (!job) return;
+
+  const total = job.items.length;
+  const checked = job.index;
+  const percent = total ? Math.round((checked / total) * 100) : 0;
+
+  $("#progressText").textContent = `${checked} / ${total}`;
+  $("#progressPercent").textContent = `${percent}%`;
+  $("#progressBar").style.width = `${percent}%`;
+
+  $("#checkedCount").textContent = checked;
+  $("#freeCount").textContent = job.free;
+  $("#takenCount").textContent = job.taken;
+  $("#unknownCount").textContent = job.unknown;
+
+  $("#historyProgress").textContent =
+    `${Math.min(checked, job.historyCount)} / ${job.historyCount}`;
+
+  $("#newProgress").textContent =
+    `${Math.max(0, checked - job.historyCount)} / ${job.newCount}`;
+}
+
+function finishScan(message) {
+  clearTimeout(scanTimer);
+  scanTimer = null;
+
+  if (job) {
+    job.running = false;
+    job.paused = false;
+  }
+
+  $("#scanState").textContent = "ZAKOŃCZONO";
+  $("#scanState").className = "status-pill";
+  $("#currentName").textContent = message || "Skanowanie zakończone.";
+  $("#pauseBtn").textContent = "Ⅱ Pauza";
+
+  renderAll();
+}
+
+async function runNext() {
+  if (!job || !job.running || job.paused) return;
+
+  if (job.index >= job.items.length) {
+    finishScan("Skanowanie zakończone.");
+    toast("Skanowanie zakończone");
+    return;
+  }
+
+  const item = job.items[job.index];
+
+  $("#currentName").textContent = item.name;
+
+  const status = await checkName(item.name, job.platform);
+
+  if (!job || !job.running) return;
+
+  recordResult(item.name, job.platform, job.length, status);
+
+  if (status === "free") job.free++;
+  else if (status === "taken") job.taken++;
+  else job.unknown++;
+
+  job.index++;
+  updateProgress();
+
+  const delay = job.platform === "minecraft" ? 1250 : 500;
+
+  if (job.running && !job.paused) {
+    scanTimer = setTimeout(runNext, delay);
+  }
+}
+
+function startScan() {
+  if (job?.running) {
+    toast("Skanowanie już trwa");
+    return;
+  }
+
+  const amount = Number($("#amount").value);
+  const charset = getCharset();
+  const queue = makeQueue(platform, length, amount, charset);
+
+  const items = [
+    ...queue.historyItems.map((name) => ({ name, source: "history" })),
+    ...queue.newItems.map((name) => ({ name, source: "new" }))
+  ];
+
+  if (!items.length) {
+    toast("Brak nowych nazw do sprawdzenia");
+    return;
+  }
+
+  job = {
+    platform,
+    length,
+    items,
+    index: 0,
+    free: 0,
+    taken: 0,
+    unknown: 0,
+    historyCount: queue.historyItems.length,
+    newCount: queue.newItems.length,
+    running: true,
+    paused: false
+  };
+
+  $("#scanPanel").classList.remove("hidden");
+  $("#scanTitle").textContent =
+    `Skanowanie ${platform === "minecraft" ? "Minecraft" : "Discord"}`;
+
+  $("#scanState").textContent = "W TRAKCIE";
+  $("#scanState").className = "status-pill running";
+  $("#pauseBtn").textContent = "Ⅱ Pauza";
+
+  updateProgress();
+  runNext();
+}
+
+function pauseScan() {
+  if (!job?.running) return;
+
+  job.paused = !job.paused;
+
+  if (job.paused) {
+    clearTimeout(scanTimer);
+    $("#pauseBtn").textContent = "▶ Wznów";
+    $("#scanState").textContent = "PAUZA";
+    $("#scanState").className = "status-pill";
+  } else {
+    $("#pauseBtn").textContent = "Ⅱ Pauza";
+    $("#scanState").textContent = "W TRAKCIE";
+    $("#scanState").className = "status-pill running";
+    runNext();
+  }
+}
+
+function stopScan() {
+  if (!job?.running) return;
+  finishScan("Skanowanie zatrzymane przez użytkownika.");
+  toast("Skanowanie zatrzymane");
+}
+
+function downloadFile(filename, content, type) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function csvEscape(value) {
+  return `"${String(value ?? "").replace(/"/g, '""')}"`;
+}
+
+function exportCSV(records, filename) {
+  const rows = [
+    ["Nazwa", "Platforma", "Długość", "Status", "Data"],
+    ...records.map((r) => [
+      r.name,
+      r.platform,
+      r.length,
+      statusLabel(r.status),
+      r.checkedAt || ""
+    ])
+  ];
+
+  const csv = "\uFEFF" + rows
+    .map((row) => row.map(csvEscape).join(";"))
+    .join("\n");
+
+  downloadFile(filename, csv, "text/csv;charset=utf-8");
+}
+
+function bindEvents() {
+  $("#platforms").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-platform]");
+    if (button) setPlatform(button.dataset.platform);
+  });
+
+  $("#amount").addEventListener("input", () => {
+    $("#amountLabel").textContent = $("#amount").value;
+  });
+
+  $("#startBtn").addEventListener("click", startScan);
+  $("#pauseBtn").addEventListener("click", pauseScan);
+  $("#stopBtn").addEventListener("click", stopScan);
+
+  $("#settingsBtn").addEventListener("click", () => setView("settingsView"));
+
+  $$("[data-view]").forEach((button) => {
+    button.addEventListener("click", () => setView(button.dataset.view));
+  });
+
+  $$("[data-go]").forEach((button) => {
+    button.addEventListener("click", () => setView(button.dataset.go + "View"));
+  });
+
+  $("#resultStatus").addEventListener("change", renderResults);
+  $("#resultSort").addEventListener("change", renderResults);
+  $("#favoritePlatform").addEventListener("change", renderFavorites);
+  $("#favoriteLength").addEventListener("change", renderFavorites);
+  $("#historyPlatform").addEventListener("change", renderHistory);
+  $("#historyLength").addEventListener("change", renderHistory);
+
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-favorite]");
+    if (!button) return;
+
+    const [p, ...parts] = button.dataset.favorite.split(":");
+    const name = parts.join(":");
+
+    const record = db.records.find(
+      (r) => r.platform === p && r.name === name
+    );
+
+    if (record) toggleFavorite(record);
+  });
+
+  $("#saveSettings").addEventListener("click", () => {
+    db.settings.discordEndpoint = $("#discordEndpoint").value.trim();
+    db.settings.minecraftEndpoint = $("#minecraftEndpoint").value.trim();
+    saveDB();
+    toast("Ustawienia zapisane");
+  });
+
+  $("#exportResults").addEventListener("click", () => {
+    exportCSV(db.records, "name-finder-wyniki.csv");
+  });
+
+  $("#exportFavorites").addEventListener("click", () => {
+    const favorites = db.favorites.map((f) => {
+      if (typeof f !== "string") return f;
+
+      const [p, ...parts] = f.split(":");
+      const name = parts.join(":");
+
+      return db.records.find(
+        (r) => r.platform === p && r.name === name
+      ) || { name, platform: p, length: name.length, status: "unknown" };
+    });
+
+    exportCSV(favorites, "name-finder-ulubione.csv");
+  });
+
+  $("#clearHistory").addEventListener("click", () => {
+    if (!confirm("Czy na pewno wyczyścić całą historię?")) return;
+
+    db.records = [];
+    saveDB();
+    renderAll();
+    toast("Historia wyczyszczona");
+  });
+
+  $("#backupData").addEventListener("click", () => {
+    downloadFile(
+      "name-finder-backup.json",
+      JSON.stringify(db, null, 2),
+      "application/json"
+    );
+  });
+
+  $("#resetData").addEventListener("click", () => {
+    if (!confirm("Usunąć wszystkie wyniki, ulubione i ustawienia?")) return;
+
+    if (job?.running) stopScan();
+
+    db = structuredClone(defaults);
+    saveDB();
+    renderAll();
+
+    $("#discordEndpoint").value = "";
+    $("#minecraftEndpoint").value = "";
+
+    toast("Dane aplikacji usunięte");
+  });
+}
+
+function init() {
+  $("#amountLabel").textContent = $("#amount").value;
+
+  fillLengthFilters();
+  renderLengths();
+  renderAll();
+  bindEvents();
+
+  setPlatform("discord");
+  setView("scanView");
+}
+
+init();
