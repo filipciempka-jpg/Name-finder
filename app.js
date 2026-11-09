@@ -19,19 +19,65 @@ function makeName(len,charset){const letters="abcdefghijklmnopqrstuvwxyz",digits
 function statusLabel(s){return s==="free"?"Wolna":s==="taken"?"Zajęta":"Niewiadomo"}
 function statusClass(s){return s==="free"?"tag-free":s==="taken"?"tag-taken":"tag-unknown"}
 function getEndpoint(p){return p==="discord"?db.settings.discordEndpoint:db.settings.minecraftEndpoint}
+
 async function checkName(name,p){
-  const endpoint=getEndpoint(p);if(!endpoint)return "unknown";
+  if(p==="minecraft"){
+    try{
+      const res=await fetch("/.netlify/functions/minecraft-check",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({username:name})
+      });
+
+      if(!res.ok)return "unknown";
+
+      const data=await res.json();
+
+      if(data.status==="taken" || data.available===false)
+        return "taken";
+
+      if(data.status==="free" && data.available===true)
+        return "free";
+
+      return "unknown";
+    }catch{
+      return "unknown";
+    }
+  }
+
+  const endpoint=getEndpoint(p);
+  if(!endpoint)return "unknown";
+
   try{
-    const u=new URL(endpoint);if(u.protocol!=="https:")return "unknown";
-    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),9000);
-    const res=await fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:name,platform:p}),signal:controller.signal});clearTimeout(timer);
-    if(!res.ok)return "unknown";
-    const data=await res.json();
-    if(data.available===true)return "free";
-    if(data.available===false)return "taken";
+    const u=new URL(endpoint);
+    if(u.protocol!=="https:")return "unknown";
+
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),9000);
+
+    try{
+      const res=await fetch(u,{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({username:name,platform:p}),
+        signal:controller.signal
+      });
+
+      if(!res.ok)return "unknown";
+
+      const data=await res.json();
+
+      if(data.available===true)return "free";
+      if(data.available===false)return "taken";
+      return "unknown";
+    }finally{
+      clearTimeout(timer);
+    }
+  }catch{
     return "unknown";
-  }catch{return "unknown"}
+  }
 }
+
 function recordResult(name,p,len,status,source){
   const now=new Date().toISOString();let r=db.records.find(x=>x.name===name&&x.platform===p&&x.length===len);
   if(r){r.previousStatus=r.status;r.status=status;r.checkedAt=now;r.checks=(r.checks||0)+1;r.lastSource=source}
@@ -77,7 +123,10 @@ async function runNext(){
   if(status==="free")job.free++;else if(status==="taken")job.taken++;else job.unknown++;
   if(fromHistory)job.historyIndex++;else job.newIndex++;
   job.index++;updateJobUI();persistJob();renderRecent();
-  scanTimer=setTimeout(runNext,250);
+  scanTimer=setTimeout(
+  runNext,
+  job.platform==="minecraft"?1250:250
+);
 }
 function pauseScan(){if(!job)return;if(job.state==="running"){job.state="paused";clearTimeout(scanTimer);updateJobUI();persistJob()}else if(job.state==="paused")resumeScan()}
 function resumeScan(){if(!job||job.state!=="paused")return;job.state="running";updateJobUI();persistJob();runNext()}
