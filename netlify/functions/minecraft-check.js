@@ -1,4 +1,5 @@
 
+
 exports.handler = async (event) => {
   const headers = {
     "Content-Type": "application/json",
@@ -11,20 +12,24 @@ exports.handler = async (event) => {
     body: JSON.stringify(data)
   });
 
-  if (event.httpMethod !== "POST") {
+  if (!["GET", "POST"].includes(event.httpMethod)) {
     return respond(405, { error: "Method not allowed" });
   }
 
   try {
-    const body = JSON.parse(event.body || "{}");
-    const username = String(body.username || "").trim();
+    let username;
+
+    if (event.httpMethod === "GET") {
+      username = event.queryStringParameters?.username;
+    } else {
+      const body = JSON.parse(event.body || "{}");
+      username = body.username;
+    }
+
+    username = String(username || "").trim();
 
     if (!/^[a-zA-Z0-9_]{3,16}$/.test(username)) {
-      return respond(400, {
-        available: null,
-        status: "unknown",
-        error: "Invalid Minecraft Java username"
-      });
+      return respond(400, { error: "Invalid username" });
     }
 
     const controller = new AbortController();
@@ -37,8 +42,7 @@ exports.handler = async (event) => {
         "https://api.mojang.com/users/profiles/minecraft/" +
           encodeURIComponent(username),
         {
-          method: "GET",
-          headers: { "Accept": "application/json" },
+          headers: { Accept: "application/json" },
           signal: controller.signal
         }
       );
@@ -46,25 +50,27 @@ exports.handler = async (event) => {
       clearTimeout(timer);
     }
 
+    const result = {
+      username,
+      upstreamStatus: response.status,
+      status: "unknown",
+      available: null
+    };
+
     if (response.status === 200) {
-      return respond(200, {
-        available: false,
-        status: "taken"
-      });
+      result.status = "taken";
+      result.available = false;
     }
 
-    // Brak profilu nie jest wystarczającym
-    // potwierdzeniem dostępności nazwy.
-    return respond(200, {
-      available: null,
-      status: "unknown"
-    });
+    return respond(200, result);
 
   } catch (error) {
     return respond(200, {
+      status: "unknown",
       available: null,
-      status: "unknown"
+      diagnostic: error.name === "AbortError"
+        ? "timeout"
+        : "request_failed"
     });
   }
 };
-
